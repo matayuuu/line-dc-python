@@ -1,4 +1,3 @@
-# 標準ライブラリ
 import os
 import json
 import hmac
@@ -6,7 +5,6 @@ import hashlib
 from datetime import datetime
 import pytz
 
-# 関連するサードパーティのインポート
 from flask import Flask, request, jsonify
 from google.cloud import bigquery
 from linebot import LineBotApi, WebhookHandler
