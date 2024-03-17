@@ -1,5 +1,6 @@
 [
   {"name": "user_id", "type": "STRING", "mode": "REQUIRED"},
-  {"name": "message", "type": "STRING", "mode": "REQUIRED"},
-  {"name": "recieved_at", "type": "TIMESTAMP", "mode": "REQUIRED"}
+  {"name": "user_message", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "bot_response", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "received_at", "type": "TIMESTAMP", "mode": "REQUIRED"}
 ]

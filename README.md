@@ -1,17 +1,19 @@
 # デプロイ手順
 ```
+# カレントディレクトリの移動
+cd line-dc-python
+
 # 環境変数の設定
 PROJECT_ID="matayuuu-line-dc"
-CLOUDRUN_SERVICE_ACCOUNT="line-bot"
-LOCATION="asia-northeast1"
-ARTIFACT_REPO="cloud-run-source-deploy"
-BQ_DATASET_ID="linebot-googlecloud-sample"
-BQ_TABLE_ID="text_info"
-CLOUDRUN_NAME="linebot-googlecloud-sample-python"
-
 LINE_CHANNEL_ACCESS_TOKEN="MdU9GoeX06WTcC/SpCUJtu2O8/eiloGacBUionHzPf6G3AQxcteTmfIll5NTPvMerOi5XCuos407RQs/L+PKqsg2rgfUZZZgShoPHMHyiyoh9BIBMscWTNMlzQFYVIAl07LbFipT896r8XqY/e6NXgdB04t89/1O/w1cDnyilFU="
 LINE_CHANNEL_SECRET="7ac781e70435b98ee5315d076b40a746"
-PORT="8080"
+
+LOCATION="asia-northeast1"
+ARTIFACT_REPO="cloud-run-source-deploy"
+BQ_DATASET_NAME="linebot_googlecloud_sample"
+BQ_TABLE_NAME="text_info"
+CLOUDRUN_SERVICE_ACCOUNT="line-bot"
+CLOUDRUN_NAME="linebot-googlecloud-sample-python"
 
 
 # 操作するユーザーでログイン
@@ -23,9 +25,14 @@ gcloud config set project $PROJECT_ID
 # API の有効化
 gcloud services enable --project=$PROJECT_ID run.googleapis.com \
   artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com
+  cloudbuild.googleapis.com \
+  secretmanager.googleapis.com
 
-# 
+# BigQuery データセット作成
+bq mk -d --location=$LOCATION $PROJECT_ID:$BQ_DATASET_NAME
+
+# BigQuery テーブル作成
+bq mk --t $PROJECT_ID:$BQ_DATASET_NAME.$BQ_TABLE_NAME ./schema.json
 
 # サービスアカウント作成
 gcloud iam service-accounts create $CLOUDRUN_SERVICE_ACCOUNT
@@ -34,6 +41,28 @@ gcloud iam service-accounts create $CLOUDRUN_SERVICE_ACCOUNT
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$CLOUDRUN_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com" \
   --role=roles/bigquery.dataEditor
+
+###### 開発 ######
+SECRET_NAME_LINE_CHANNEL_ACCESS_TOKEN="line-channel-access-token"
+SECRET_NAME_LINE_CHANNEL_SECRET="line-channel-secret"
+
+
+# シークレット作成（LINE_CHANNEL_ACCESS_TOKEN）
+printf $LINE_CHANNEL_ACCESS_TOKEN | gcloud secrets create $SECRET_NAME_LINE_CHANNEL_ACCESS_TOKEN --data-file=-
+
+# シークレット作成（LINE_CHANNEL_SECRET）
+printf $LINE_CHANNEL_SECRET | gcloud secrets create $SECRET_NAME_LINE_CHANNEL_SECRET --data-file=-
+
+# 権限付与
+gcloud secrets add-iam-policy-binding $SECRET_NAME_LINE_CHANNEL_ACCESS_TOKEN \
+  --member="serviceAccount:$CLOUDRUN_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+gcloud secrets add-iam-policy-binding $SECRET_NAME_LINE_CHANNEL_SECRET \
+  --member="serviceAccount:$CLOUDRUN_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+#################
 
 # Artifacts repositories 作成
 gcloud artifacts repositories create $ARTIFACT_REPO \
@@ -52,9 +81,10 @@ gcloud run deploy $CLOUDRUN_NAME --port=$PORT \
   --service-account=$CLOUDRUN_SERVICE_ACCOUNT@$PROJECT_ID.iam.gserviceaccount.com \
   --region=$LOCATION \
   --project=$PROJECT_ID \
-  --set-env-vars="LINE_CHANNEL_ACCESS_TOKEN"=$LINE_CHANNEL_ACCESS_TOKEN \
-  --set-env-vars="LINE_CHANNEL_SECRET"=$LINE_CHANNEL_SECRET \
-  --set-env-vars="BQ_DATASET_ID"=$BQ_DATASET_ID \
-  --set-env-vars="BQ_TABLE_ID"=$BQ_TABLE_ID
+  --set-env-vars="PROJECT_ID"=$PROJECT_ID \
+  --set-env-vars="BQ_DATASET_NAME"=$BQ_DATASET_NAME \
+  --set-env-vars="BQ_TABLE_NAME"=$BQ_TABLE_NAME \
+  --set-secrets="LINE_CHANNEL_ACCESS_TOKEN"=$SECRET_NAME_LINE_CHANNEL_ACCESS_TOKEN:latest \
+  --set-secrets="LINE_CHANNEL_SECRET"=$SECRET_NAME_LINE_CHANNEL_SECRET:latest
 
 ```

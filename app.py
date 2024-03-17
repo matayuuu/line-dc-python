@@ -14,18 +14,19 @@ from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 
-app = Flask(__name__)
-
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET', '')
-bq_dataset_id = 'your_dataset_id'
-BQ_DATASET_ID = os.getenv('BQ_DATASET_ID', '')
-BQ_TABLE_ID = os.getenv('BQ_TABLE_ID', '')
+PROJECT_ID = os.getenv('PROJECT_ID')
+BQ_DATASET_NAME = os.getenv('BQ_DATASET_NAME', '')
+BQ_TABLE_NAME = os.getenv('BQ_TABLE_NAME', '')
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+
+app = Flask(__name__)
 bq_client = bigquery.Client()
+
 
 @app.route('/')
 def home():
@@ -48,33 +49,37 @@ def webhook():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    # 現在時刻を取得（BigQuery に格納できる形式）
+    now = datetime.now(pytz.timezone("Asia/Tokyo")).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
     # イベントから情報を取得
-    user_id = event.message.user_id
+    user_id = event.source.user_id
     text = event.message.text
     reply_token = event.reply_token
-    timestamp = event.timestamp
     response_text = f'{text}と言われましても'
     
-    # BigQueryに挿入する行を準備
+    # BigQuery に挿入する行を準備
     row = [{
         'user_id': user_id,
-        'message': text,
-        'received_at': datetime.utcfromtimestamp(timestamp/1000).replace(tzinfo=pytz.utc),
+        'user_message': text,
+        'bot_response': response_text,
+        'received_at': now,
     }]
 
-    # データセットとテーブルの参照を作成
-    table_ref = bq_client.dataset(BQ_DATASET_ID).table(BQ_TABLE_ID)
+    # テーブル参照を取得
+    table_id = f"{PROJECT_ID}.{BQ_DATASET_NAME}.{BQ_TABLE_NAME}"
+    table_ref = bq_client.get_table(table_id)
 
-    # BigQueryにデータを挿入
+    # BigQuery にデータを挿入
     try:
-        errors = bq_client.insert_rows_json(table_ref, [row])  # リスト内の単一の辞書を挿入
-        if errors != []:
-            print('Insert errors:', errors)
+        errors = bq_client.insert_rows(table_ref, row) 
+        if errors:
+            print('[ERROR] Failed to insert message into BigQuery', errors)
     except Exception as e:
         print(f'[ERROR] Failed to insert message into BigQuery: {e}')
-        print(e)
 
-    # 応答メッセージを実行
+
+    # LINE BOT へ応答メッセージを実行
     try:
         line_bot_api.reply_message(
             reply_token,
